@@ -1,0 +1,6 @@
+[submodule "libs/nginx"]
+	path = libs/nginx
+	url = https://github.com/nginx/nginx.git
+[submodule "libs/libhercules"]
+	path = libs/libhercules
+	url = https://github.com/InHavk/libhercules.git
