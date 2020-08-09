@@ -5,14 +5,14 @@ static ngx_http_module_t  ngx_http_hercules_module_ctx = {
     NULL,                                  /* preconfiguration */
     ngx_http_hercules_postconf,            /* postconfiguration */
 
-    NULL,                                  /* create main configuration */
+    ngx_http_hercules_create_conf,         /* create main configuration */
     NULL,                                  /* init main configuration */
 
     NULL,                                  /* create server configuration */
     NULL,                                  /* merge server configuration */
 
-    ngx_http_hercules_create_loc_conf,     /* create location configuration */
-    ngx_http_hercules_merge_loc_conf       /* merge location configuration */
+    NULL,                                  /* create location configuration */
+    NULL                                   /* merge location configuration */
 };
 
 
@@ -26,14 +26,14 @@ ngx_module_t  ngx_http_hercules_module = {
     NULL,                                  /* init process */
     NULL,                                  /* init thread */
     NULL,                                  /* exit thread */
-    NULL,                                  /* exit process */
+    ngx_http_hercules_exit_process,        /* exit process */
     NULL,                                  /* exit master */
     NGX_MODULE_V1_PADDING
 };
 
 static ngx_int_t ngx_http_hercules_handler(ngx_http_request_t *r){
 
-    ngx_http_hercules_loc_conf_t* lmcf = ngx_http_get_module_loc_conf(r, ngx_http_hercules_module);
+    ngx_http_hercules_main_conf_t* mcf = ngx_http_get_module_main_conf(r, ngx_http_hercules_module);
 
     ngx_log_error(NGX_LOG_INFO,r->connection->log, 0,
                    "ngx_http_hercules_handler");
@@ -42,6 +42,288 @@ static ngx_int_t ngx_http_hercules_handler(ngx_http_request_t *r){
     generate_uuid_v4(uuid);
     uint64_t timestamp = generate_current_timestamp();
     Event* event = event_create(0x01, timestamp, uuid);
+
+    /* /NginxEvent/time = Long*/
+    container_add_tag_Long(event->payload, 4, "time", timestamp);
+
+    /* /NginxEvent/host = String */
+    STR_FROM_NGX_STR(s_host, r->pool, r->headers_in.host->value);
+    container_add_tag_String(event->payload, 4, "host", s_host);
+    //ngx_pfree(r->pool, s_host);
+
+    /* /NginxEvent/uri = String */
+    STR_FROM_NGX_STR(s_uri, r->pool, r->uri);
+    container_add_tag_String(event->payload, 3, "uri", s_uri);
+    //ngx_pfree(r->pool, s_uri);
+
+    /* /NginxEvent/args */
+    Vector* vector_args = (Vector*) container_add_tag_Vector(event->payload, CONTAINER, 4, "args")->value;
+    char* key = ngx_palloc(r->pool, sizeof(char) * (r->args.len + 1));
+    size_t key_inx = 0;
+    char* value = ngx_palloc(r->pool, sizeof(char) * (r->args.len + 1));
+    size_t value_inx = 0;
+    if(key == NULL || value == NULL){
+        event_free(event);
+        return NGX_ERROR;
+    }
+
+    uint8_t key_full = 0;
+    uint8_t value_full = 0;
+    
+    /* WTF?! Need refactoring for this loop */
+    for(size_t i = 0; i < r->args.len; ++i){
+        char buffer = r->args.data[i];
+        if(buffer == '='){
+            key_full = 1;
+        }
+        if(buffer == '&'){
+            key_full = 1;
+            value_full = 1;
+        }
+        if(!key_full && buffer != '=' && buffer != '&'){
+            key[key_inx++] = buffer;
+        }
+        if(key_full && !value_full && buffer != '=' && buffer != '&'){
+            value[value_inx++] = buffer;
+        }
+        if(!(key_full && value_full) && r->args.len - 1 != i){
+            continue;
+        }
+
+        /* if key exist */
+        if(key_inx > 0){
+    /* /NginxEvent/args/<container> */
+            List* container_args = vector_add_Container(vector_args);
+            key[key_inx] = '\0';
+            value[value_inx] = '\0';
+            container_add_tag_String(container_args, 1, "k", key);
+            container_add_tag_String(container_args, 1, "v", value);
+        }
+        key_full = 0;
+        value_full = 0;
+        key_inx = 0;
+        value_inx = 0;
+    }
+
+    //ngx_pfree(r->pool, key);
+    //ngx_pfree(r->pool, value);
+    
+    /* /NginxEvent/status */
+    container_add_tag_Short(event->payload, 6, "status", (int16_t) r->headers_out.status);
+
+    /* /NginxEvent/method */
+    uint8_t b_method = 0xFF;
+    if(r->method == NGX_HTTP_HEAD){
+        b_method = 0x00;
+    }
+    if(r->method == NGX_HTTP_GET){
+        b_method = 0x01;
+    }
+    if(r->method == NGX_HTTP_POST){
+        b_method = 0x02;
+    }
+    if(r->method == NGX_HTTP_PUT){
+        b_method = 0x03;
+    }
+    if(r->method == NGX_HTTP_DELETE){
+        b_method = 0x04;
+    }
+    /* 0x05 - CONNECT */
+    if(r->method == NGX_HTTP_OPTIONS){
+        b_method = 0x06;
+    }
+    if(r->method == NGX_HTTP_TRACE){
+        b_method = 0x07;
+    }
+    if(r->method == NGX_HTTP_PATCH){
+        b_method = 0x08;
+    }
+    if(r->method == NGX_HTTP_MKCOL){
+        b_method = 0x09;
+    }
+    if(r->method == NGX_HTTP_COPY){
+        b_method = 0x0a;
+    }
+    if(r->method == NGX_HTTP_MOVE){
+        b_method = 0x0b;
+    }
+    if(r->method == NGX_HTTP_PROPFIND){
+        b_method = 0x0c;
+    }
+    if(r->method == NGX_HTTP_PROPPATCH){
+        b_method = 0x0d;
+    }
+    if(r->method == NGX_HTTP_LOCK){
+        b_method = 0x0e;
+    }
+    if(r->method == NGX_HTTP_UNLOCK){
+        b_method = 0x0f;
+    }
+
+    container_add_tag_Byte(event->payload, 6, "method", b_method);
+
+    /* /NginxEvent/proto */
+    STR_FROM_NGX_STR(s_proto, r->pool, r->http_protocol);
+    container_add_tag_String(event->payload, 5, "proto", s_proto);
+    //ngx_pfree(r->pool, s_proto);
+
+    /* /NginxEvent/req_headers */
+    Vector* vector_req_headers = (Vector*) container_add_tag_Vector(event->payload, CONTAINER, 11, "req_headers")->value;
+    ngx_list_part_t* req_headers_part = &r->headers_in.headers.part;
+    while(1){
+        for(size_t i = 0; i < (size_t) req_headers_part->nelts; ++i){
+            ngx_table_elt_t* header = ((ngx_table_elt_t*) req_headers_part->elts) + i;
+            List* container_req_header = vector_add_Container(vector_req_headers);
+            STR_FROM_NGX_STR(s_req_key, r->pool, header->key);
+            for(size_t key_i = 0; key_i < header->key.len; ++key_i){
+                s_req_key[key_i] = ngx_tolower(s_req_key[key_i]);
+            }
+            STR_FROM_NGX_STR(s_req_value, r->pool, header->value);
+            container_add_tag_String(container_req_header, 1, "k", s_req_key);
+            container_add_tag_String(container_req_header, 1, "v", s_req_value);
+            //ngx_pfree(r->pool, s_req_key);
+            //ngx_pfree(r->pool, s_req_value);
+        }
+        
+        if(req_headers_part == r->headers_in.headers.last){
+            break;
+        } else {
+            req_headers_part = req_headers_part->next;
+        }
+    }
+
+    /* /NginxEvent/res_headers */
+    Vector* vector_res_headers = (Vector*) container_add_tag_Vector(event->payload, CONTAINER, 11, "res_headers")->value;
+    /* /NginxEvent/res_headers/<content-type> */
+    List* container_content_type = vector_add_Container(vector_res_headers);
+    container_add_tag_String(container_content_type, 1, "k", "content-type");
+    STR_FROM_NGX_STR(s_value_content_type, r->pool, r->headers_out.content_type);
+    container_add_tag_String(container_content_type, 1, "v", s_value_content_type);
+    //ngx_pfree(r->pool, s_value_content_type);
+    /* /NginxEvent/res_headers/<content_length> */
+    List* container_content_length = vector_add_Container(vector_res_headers);
+    container_add_tag_String(container_content_length, 1, "k", "content-length");
+    STR_FROM_NGX_STR(s_value_content_length, r->pool, r->headers_out.content_length->value);
+    container_add_tag_String(container_content_length, 1, "v", s_value_content_length);
+    //ngx_pfree(r->pool, s_value_content_length);
+    /* /NginxEvent/res_headers/<other> */
+
+    ngx_list_part_t* res_headers_part = &r->headers_out.headers.part;
+    while(1){
+        for(size_t i = 0; i < (size_t) res_headers_part->nelts; ++i){
+            ngx_table_elt_t* header = ((ngx_table_elt_t*) req_headers_part->elts) + i;
+            STR_FROM_NGX_STR(s_res_key, r->pool, header->key);
+            for(size_t key_i = 0; key_i < header->key.len; ++key_i){
+                s_res_key[key_i] = ngx_tolower(s_res_key[key_i]);
+            }
+            if(ngx_strcmp(s_res_key, "x-singular-backend") == 0 ||
+             ngx_strcmp(s_res_key, "x-kontur-trace-id") == 0 ){
+                STR_FROM_NGX_STR(s_res_value, r->pool, header->value);
+                List* container_res_header = vector_add_Container(vector_res_headers);
+                container_add_tag_String(container_res_header, 1, "k", s_res_key);
+                container_add_tag_String(container_res_header, 1, "v", s_res_value);
+                //ngx_pfree(r->pool, s_res_value);
+            }
+            //ngx_pfree(r->pool, s_res_key);
+        }
+
+        if(res_headers_part == r->headers_out.headers.last){
+            break;
+        } else {
+            res_headers_part = res_headers_part->next;
+        }
+    }
+
+    /* /NginxEvent/upstream_status */
+    Vector* vector_upstream_status = (Vector*) container_add_tag_Vector(event->payload, SHORT, 15, "upstream_status")->value;
+
+    /* /NginxEvent/upstream_addr */
+    Vector* vector_upstream_addr = (Vector*) container_add_tag_Vector(event->payload, STRING, 13, "upstream_addr")->value;
+
+    /* /NginxEvent/counters */
+    List* container_counters = (List*) container_add_tag_Container(event->payload, 8, "counters")->value;
+
+    /* /NginxEvent/counters/req_len */
+    container_add_tag_Integer(container_counters, 7, "req_len", (int32_t) r->request_length);
+
+    /* /NginxEvent/counters/upstream_connect_time */
+    Vector* vector_upstream_connect_time = (Vector*) container_add_tag_Vector(container_counters, LONG, 21, "upstream_connect_time")->value;
+
+    /* /NginxEvent/counters/upstream_req_bytes */
+    Vector* vector_upstream_req_bytes = (Vector*) container_add_tag_Vector(container_counters, LONG, 18, "upstream_req_bytes")->value;
+
+    /* /NginxEvent/counters/upstream_res_bytes */
+    Vector* vector_upstream_res_bytes = (Vector*) container_add_tag_Vector(container_counters, LONG, 18, "upstream_res_bytes")->value;
+
+    /* /NginxEvent/counters/upstream_res_header_time */
+    Vector* vector_upstream_res_header_time = (Vector*) container_add_tag_Vector(container_counters, LONG, 24, "upstream_res_header_time")->value;
+
+    /* /NginxEvent/counters/upstream_res_len */
+    Vector* vector_upstream_res_len = (Vector*) container_add_tag_Vector(container_counters, LONG, 16, "upstream_res_len")->value;
+
+    /* /NginxEvent/counters/upstream_res_time */
+    Vector* vector_upstream_res_time = (Vector*) container_add_tag_Vector(container_counters, LONG, 17, "upstream_res_time")->value;
+    
+    ngx_http_upstream_state_t* upstream_state = r->upstream_states->elts;
+    for (size_t i = 0; ; ++i){
+        if(i == (size_t) r->upstream_states->nelts){
+            break;
+        }
+        vector_add_Short(vector_upstream_status, (int16_t) upstream_state[i].status);
+        char* string_upstream_addr = ngx_palloc(r->pool, (sizeof(char) * upstream_state[i].peer->len) + 1);
+        string_upstream_addr[upstream_state[i].peer->len] = '\0';
+        ngx_memcpy(string_upstream_addr, upstream_state[i].peer->data, upstream_state[i].peer->len);
+        vector_add_String(vector_upstream_addr, string_upstream_addr);
+        vector_add_Long(vector_upstream_connect_time, (int64_t) upstream_state[i].connect_time);
+        vector_add_Long(vector_upstream_req_bytes, (int64_t) upstream_state[i].bytes_sent);
+        vector_add_Long(vector_upstream_res_bytes, (int64_t) upstream_state[i].bytes_received);
+        vector_add_Long(vector_upstream_res_header_time, (int64_t) upstream_state[i].header_time);
+        vector_add_Long(vector_upstream_res_len, (int64_t) upstream_state[i].response_length);
+        vector_add_Long(vector_upstream_res_time, (int64_t) upstream_state[i].response_time);
+        //ngx_pfree(r->pool, string_upstream_addr);
+    }
+    
+    /* /NginxEvent/counters/res_bytes */
+    container_add_tag_Long(container_counters, 9, "res_bytes", (int64_t) r->connection->sent);
+
+    /* /NginxEvent/counters/full_time */
+    ngx_time_t* tp_full_time = ngx_timeofday();
+    ngx_msec_int_t ms_full_time = (ngx_msec_int_t) ((tp_full_time->sec - r->start_sec) * 1000 + (tp_full_time->msec - r->start_msec));
+    ms_full_time = ngx_max(ms_full_time, 0);
+    container_add_tag_Long(container_counters, 9, "full_time", (int64_t) ms_full_time);
+
+    /* /NginxEvent/connection */
+    List* container_connection = (List*) container_add_tag_Container(event->payload, 10, "connection")->value;
+
+    /* /NginxEvent/connection/port */
+    container_add_tag_Short(container_connection, 4, "port", (int16_t) ngx_inet_get_port(r->connection->local_sockaddr));
+
+    /* /NginxEvent/connection/addr */
+    ngx_str_t  connection_addr;
+    u_char     addr[NGX_SOCKADDR_STRLEN];
+    connection_addr.len = NGX_SOCKADDR_STRLEN;
+    connection_addr.data = addr;
+    char string_connection_addr[46];
+    if (ngx_connection_local_sockaddr(r->connection, &connection_addr, 0) == NGX_OK) {
+        string_connection_addr[connection_addr.len] = '\0';
+        ngx_memcpy(string_connection_addr, connection_addr.data, connection_addr.len);
+        container_add_tag_String(container_connection, 4, "addr", "");
+    }
+
+    /* /NginxEvent/connection/client_ip */
+    char string_client_addr[46];
+    ngx_memcpy(string_client_addr, (char*) r->connection->addr_text.data, r->connection->addr_text.len);
+    string_client_addr[r->connection->addr_text.len] = '\0';
+    container_add_tag_String(container_connection, 9, "client_ip", string_client_addr);
+
+    /* /NginxEvent/connection/client_port */
+    container_add_tag_Short(container_connection, 11, "client_port", (int16_t) ngx_inet_get_port(r->connection->sockaddr));
+
+    /* /NginxEvent/connection/tls_verison */
+    /*if(r->connection->ssl){
+        container_add_tag_String(container_connection, 11, "tls_verison", (char*) SSL_get_version(r->connection->ssl->connection));
+    }*/
+
 
     size_t* event_binary_size = ngx_palloc(r->pool, sizeof(size_t));
     char* event_binary = event_to_bin(event, event_binary_size);
@@ -55,19 +337,16 @@ static ngx_int_t ngx_http_hercules_handler(ngx_http_request_t *r){
     uint32_t be_event_size = htobe32((uint32_t) *event_binary_size);
     
     ngx_log_error(NGX_LOG_INFO,r->connection->log, 0,
-                   "buffer size: %d", lmcf->buffer->end - lmcf->buffer->pos);
+                   "buffer size: %d", mcf->buffer->end - mcf->buffer->pos);
     
-    if((size_t) (lmcf->buffer->end - lmcf->buffer->pos) < message_length){
-        ngx_http_hercules_flush_buffer(lmcf->buffer, r->connection->log);
-        if(lmcf->event->timer_set){
-            ngx_event_del_timer(lmcf->event);
+    if((size_t) (mcf->buffer->end - mcf->buffer->pos) < message_length){
+        if(mcf->event->timer_set){
+            ngx_event_del_timer(mcf->event);
         }
+        ngx_http_hercules_flush_buffer(mcf, r->connection->log);
     }
 
-    u_char* pos = lmcf->buffer->pos;
-    ((ngx_http_hercules_log_t*) pos)->size = message_length;
-    pos = (u_char*) ((ngx_http_hercules_log_t*) pos)->message;
-
+    u_char* pos = mcf->buffer->pos;
     *pos++ = (uint8_t) (be_event_size  & 0x000000FF);
     *pos++ = (uint8_t) ((be_event_size & 0x0000FF00) >> 8);
     *pos++ = (uint8_t) ((be_event_size & 0x00FF0000) >> 16);
@@ -77,22 +356,55 @@ static ngx_int_t ngx_http_hercules_handler(ngx_http_request_t *r){
     pos += *event_binary_size;
     ngx_memcpy(pos, stream_name, stream_size);
     pos += stream_size;
-    lmcf->buffer->pos = pos;
+    mcf->buffer->pos = pos;
 
     ngx_pfree(r->pool, event_binary_size);
     ngx_free(event_binary);
 
-    lmcf->event->log = r->connection->log;
-    if(!lmcf->event->timer_set){
-        ngx_event_add_timer(lmcf->event, lmcf->flush);
+    mcf->event->log = r->connection->log;
+    if(!mcf->event->timer_set){
+        ngx_event_add_timer(mcf->event, mcf->flush);
     }
 
     return NGX_OK;
 }
 
+static void* ngx_http_hercules_create_conf(ngx_conf_t* cf){
+    ngx_http_hercules_main_conf_t* mcf;
+    mcf = ngx_palloc(cf->pool, sizeof(ngx_http_hercules_main_conf_t));
+    if(mcf == NULL){
+        return NULL;
+    }
+
+    mcf->buffer = ngx_create_temp_buf(cf->pool, HERCULES_LOG_BUFFER_SIZE);
+    if (mcf->buffer == NULL){
+        return NULL;
+    }
+
+    mcf->flush = HERCULES_LOG_BUFFER_FLUSH_TIME;
+    mcf->event = ngx_pcalloc(cf->pool, sizeof(ngx_event_t));
+    if(mcf->event == NULL){
+        return NULL;
+    }
+    mcf->event->cancelable = 1;
+    mcf->event->handler = ngx_http_hercules_flush_handler;
+    mcf->event->data = mcf;
+    mcf->event->log = &cf->cycle->new_log;
+
+    mcf->pool = cf->pool;
+
+#ifdef THREAD_SENDER
+    mcf->buckets_for_resend = NULL;
+    mcf->socket = -1;
+    ngx_str_t hercules_thread_pool_name = ngx_string(HERCULES_THREAD_POOL_NAME);
+    mcf->thread_pool = ngx_thread_pool_add(cf, &hercules_thread_pool_name);
+#endif
+    return mcf;
+}
+
 static ngx_int_t ngx_http_hercules_postconf(ngx_conf_t *cf){
-    ngx_http_core_main_conf_t  *cmcf;
-    ngx_http_handler_pt        *h;
+    ngx_http_core_main_conf_t*  cmcf;
+    ngx_http_handler_pt*        h;
 
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
 
@@ -105,64 +417,27 @@ static ngx_int_t ngx_http_hercules_postconf(ngx_conf_t *cf){
     return NGX_OK;
 }
 
-static void* ngx_http_hercules_create_loc_conf(ngx_conf_t* cf){
-    ngx_http_hercules_loc_conf_t  *conf;
-
-    conf = ngx_pcalloc(cf->pool, sizeof(ngx_http_hercules_loc_conf_t));
-    if (conf == NULL) {
-        return NULL;
+static void ngx_http_hercules_exit_process(ngx_cycle_t *cycle){
+    if (ngx_process != NGX_PROCESS_WORKER && ngx_process != NGX_PROCESS_SINGLE){
+        return;
     }
-
-    conf->buffer = ngx_create_temp_buf(cf->pool, 1024 * 1024 * 8);
-    if (conf->buffer == NULL){
-        return NULL;
+    #ifdef THREAD_SENDER
+    ngx_http_hercules_main_conf_t* mcf = ngx_http_cycle_get_module_main_conf(cycle, ngx_http_hercules_module);
+    if(mcf == NULL){
+        return;
     }
-
-    conf->flush = 10 * 1000; /* 10s */
-    conf->event = ngx_pcalloc(cf->pool, sizeof(ngx_event_t));
-    if(conf->event == NULL){
-        return NULL;
-    }
-    conf->event->cancelable = 1;
-    conf->event->handler = ngx_http_hercules_flush_handler;
-    conf->event->data = conf->buffer;
-    conf->event->log = &cf->cycle->new_log;
-
-    conf->pool = cf->pool;
-
-    return conf;
+    ngx_http_hercules_send_metrics(mcf, 1);
+    #endif
 }
 
-static char* ngx_http_hercules_merge_loc_conf(ngx_conf_t* cf, void* parent, void* child){
-    ngx_http_hercules_loc_conf_t* prev = parent;
-    ngx_http_hercules_loc_conf_t* conf = child;
-
-    if(conf->buffer == NULL){
-        conf->buffer = prev->buffer;
-        conf->event = prev->event;
-        conf->flush = prev->flush;
-    }
-
-    return NGX_CONF_OK;
-}
-
-static void ngx_http_hercules_flush_buffer(ngx_buf_t* buffer, ngx_log_t* log){
-    u_char* pos = buffer->start;
-    size_t count = 0;
-    while(buffer->pos > pos){
-        ngx_http_hercules_log_t* log_event = (ngx_http_hercules_log_t*) pos;
-        
-        //
-
-        count++;
-        pos += sizeof(ngx_http_hercules_log_t) + log_event->size;
-    }
-    ngx_log_error(NGX_LOG_INFO, log, 0, "FLushed %d messages", count);
-    buffer->pos = buffer->start;
+static void ngx_http_hercules_flush_buffer(ngx_http_hercules_main_conf_t* conf, ngx_log_t* log){
+    ngx_http_hercules_send_metrics(conf, 0);
 }
 
 static void ngx_http_hercules_flush_handler(ngx_event_t* ev){
     ngx_log_error(NGX_LOG_INFO, ev->log, 0, "flush_handler");
-    ngx_buf_t* buffer = (ngx_buf_t*) ev->data;
-    ngx_http_hercules_flush_buffer(buffer, ev->log);
+    ngx_http_hercules_main_conf_t* conf = (ngx_http_hercules_main_conf_t*) ev->data;
+    ngx_http_hercules_flush_buffer(conf, ev->log);
 }
+
+#include "ngx_http_hercules_log_network.c"
