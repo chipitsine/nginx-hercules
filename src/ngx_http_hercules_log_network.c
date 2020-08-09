@@ -18,18 +18,14 @@ static void ngx_http_hercules_thread_sender(void* data, ngx_log_t* log){
         bucket->counter++;
 reconnect:
         if(*socket_fd < 1){
-            ngx_log_stderr(0, "Recreate socket");
             *socket_fd = socket(AF_INET, SOCK_STREAM, 0);
             if(*socket_fd < 0){
-                ngx_log_stderr(0, "Socket can't create");
                 goto error;
             }
             if(setsockopt(*socket_fd, SOL_SOCKET, SO_KEEPALIVE, &logic_true, sizeof(logic_true)) < 0){
-                ngx_log_stderr(0, "Can't set SO_KEEPALIVE on socket");
                 goto error;
             }
             if(setsockopt(*socket_fd, SOL_SOCKET, SO_SNDTIMEO, &send_timeout, sizeof(send_timeout)) < 0){
-                ngx_log_stderr(0, "Can't set SO_SNDTIMEO on socket");
                 goto error;
             }
             ngx_memzero(&server_addr, sizeof(server_addr));
@@ -37,21 +33,17 @@ reconnect:
             server_addr.sin_port = htons(HERCULES_SENDER_POST);
             inet_pton(AF_INET, HERCULES_SENDER_HOST, &server_addr.sin_addr);
             if(connect(*socket_fd, &server_addr, sizeof(server_addr)) < 0){
-                ngx_log_stderr(0, "Can't connect on socket");
                 goto error;
             }
         }
     
         ssize_t sended_bytes = 0;
         size_t size_of_bucket = bucket->buffer->end - bucket->buffer->pos;
-        ngx_log_stderr(0, "Size of bucket: %l", size_of_bucket);
         while(size_of_bucket > 0){
             sended_bytes = send(*socket_fd, bucket->buffer->pos, size_of_bucket, 0);
             if(sended_bytes < 0) {
-                ngx_log_stderr(0, "Can't send in socket");
                 goto error;
             }
-            ngx_log_stderr(0, "Sended %l bytes", sended_bytes);
             bucket->buffer->pos += sended_bytes;
             size_of_bucket = bucket->buffer->end - bucket->buffer->pos;
         }
