@@ -38,7 +38,7 @@ static ngx_int_t ngx_http_hercules_handler(ngx_http_request_t *r){
     ngx_log_error(NGX_LOG_INFO,r->connection->log, 0,
                    "ngx_http_hercules_handler");
     
-    uint8_t* uuid = malloc(sizeof(uint8_t) * 16);
+    uint8_t* uuid = ngx_palloc(r->pool, sizeof(uint8_t) * 16);
     generate_uuid_v4(uuid);
     uint64_t timestamp = generate_current_timestamp();
     Event* event = event_create(0x01, timestamp, uuid);
