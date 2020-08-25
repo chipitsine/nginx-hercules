@@ -164,7 +164,7 @@ static ngx_int_t ngx_http_hercules_handler(ngx_http_request_t *r){
             b_method = 0xFF;
             break;
     }
-    
+
     container_add_tag_Byte(event->payload, 6, "method", b_method);
 
     /* /NginxEvent/proto */
@@ -324,19 +324,50 @@ static ngx_int_t ngx_http_hercules_handler(ngx_http_request_t *r){
     /* /NginxEvent/connection/client_port */
     container_add_tag_Short(container_connection, 11, "client_port", (int16_t) ngx_inet_get_port(r->connection->sockaddr));
 
-    /* /NginxEvent/connection/tls_verison */
-    /*if(r->connection->ssl){
-        container_add_tag_String(container_connection, 11, "tls_verison", (char*) SSL_get_version(r->connection->ssl->connection));
-    }*/
+    
+    if(r->connection->ssl){
+        /* /NginxEvent/connection/tls_verison */
+        container_add_tag_String(container_connection, 11, "tls_version", (char*) SSL_get_version(r->connection->ssl->connection));
 
+        /* /NginxEvent/connection/cipher */
+        container_add_tag_String(container_connection, 6, "cipher", (char*) SSL_get_cipher_name(r->connection->ssl->connection));
+    }
+
+    /* /NginxEvent/connection/scheme */
+    STR_FROM_NGX_STR(s_scheme, r->pool, r->schema);
+    container_add_tag_String(container_connection, 6, "scheme", s_scheme);
+
+    /* /NginxEvent/connection/connection */
+    container_add_tag_Long(container_connection, 10, "connection", (int64_t) r->connection->number);
+
+    /* /NginxEvent/request_id */
+    u_char random_bytes[16];
+    u_char s_request_id[33];
+    s_request_id[32] = '\0';
+    if (RAND_bytes(random_bytes, 16) == 1) {
+        ngx_hex_dump(s_request_id, random_bytes, 16);
+        container_add_tag_String(event->payload, 10, "request_id", (char*) s_request_id);
+    }
+
+    /* /NginxEvent/node */
+    ngx_http_variable_value_t* var_node_name = ngx_http_get_indexed_variable(r, mcf->node_var_inx);
+    char* s_node_name = ngx_palloc(r->pool, sizeof(char) * (var_node_name->len + 1)); \
+    s_node_name[var_node_name->len] = '\0'; \
+    ngx_memcpy(s_node_name, var_node_name->data, var_node_name->len);
+    container_add_tag_String(event->payload, 4, "node", s_node_name);
+
+    /* container /NginxEvent is full */
 
     size_t* event_binary_size = ngx_palloc(r->pool, sizeof(size_t));
     char* event_binary = event_to_bin(event, event_binary_size);
 
     event_free(event);
 
-    char stream_name[5] = "test";
-    uint8_t stream_size = strlen(stream_name);
+    ngx_http_variable_value_t* var_hercules_stream = ngx_http_get_indexed_variable(r, mcf->hercules_stream_var_inx);
+    char* stream_name = ngx_palloc(r->pool, sizeof(char) * (var_hercules_stream->len + 1)); \
+    stream_name[var_hercules_stream->len] = '\0'; \
+    ngx_memcpy(stream_name, var_hercules_stream->data, var_hercules_stream->len);
+    uint8_t stream_size = var_hercules_stream->len;
 
     size_t message_length = sizeof(uint32_t) + sizeof(uint8_t) + *event_binary_size + stream_size;
     uint32_t be_event_size = htobe32((uint32_t) *event_binary_size);
@@ -408,10 +439,17 @@ static void* ngx_http_hercules_create_conf(ngx_conf_t* cf){
 }
 
 static ngx_int_t ngx_http_hercules_postconf(ngx_conf_t *cf){
-    ngx_http_core_main_conf_t*  cmcf;
-    ngx_http_handler_pt*        h;
+    ngx_http_core_main_conf_t*     cmcf;
+    ngx_http_hercules_main_conf_t* mcf;
+    ngx_http_handler_pt*           h;
 
     cmcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_core_module);
+    mcf = ngx_http_conf_get_module_main_conf(cf, ngx_http_hercules_module);
+
+    ngx_str_t s_node_name = ngx_string("node_name");
+    mcf->node_var_inx = ngx_http_get_variable_index(cf, &s_node_name);
+    ngx_str_t s_hercules_stream = ngx_string("hercules_stream");
+    mcf->hercules_stream_var_inx = ngx_http_get_variable_index(cf, &s_hercules_stream);
 
     h = ngx_array_push(&cmcf->phases[NGX_HTTP_LOG_PHASE].handlers);
     if (h == NULL) {
