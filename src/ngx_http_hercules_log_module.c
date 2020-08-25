@@ -112,54 +112,59 @@ static ngx_int_t ngx_http_hercules_handler(ngx_http_request_t *r){
     container_add_tag_Short(event->payload, 6, "status", (int16_t) r->headers_out.status);
 
     /* /NginxEvent/method */
-    uint8_t b_method = 0xFF;
-    if(r->method == NGX_HTTP_HEAD){
-        b_method = 0x00;
+    uint8_t b_method;
+    switch(r->method){
+        case NGX_HTTP_HEAD:
+            b_method = 0x00;
+            break;
+        case NGX_HTTP_GET:
+            b_method = 0x01;
+            break;
+        case NGX_HTTP_POST:
+            b_method = 0x02;
+            break;
+        case NGX_HTTP_PUT:
+            b_method = 0x03;
+            break;
+        case NGX_HTTP_DELETE:
+            b_method = 0x04;
+            break;
+        /* 0x05 - CONNECT */
+        case NGX_HTTP_OPTIONS:
+            b_method = 0x06;
+            break;
+        case NGX_HTTP_TRACE:
+            b_method = 0x07;
+            break;
+        case NGX_HTTP_PATCH:
+            b_method = 0x08;
+            break;
+        case NGX_HTTP_MKCOL:
+            b_method = 0x09;
+            break;
+        case NGX_HTTP_COPY:
+            b_method = 0x0a;
+            break;
+        case NGX_HTTP_MOVE:
+            b_method = 0x0b;
+            break;
+        case NGX_HTTP_PROPFIND:
+            b_method = 0x0c;
+            break;
+        case NGX_HTTP_PROPPATCH:
+            b_method = 0x0d;
+            break;
+        case NGX_HTTP_LOCK:
+            b_method = 0x0e;
+            break;
+        case NGX_HTTP_UNLOCK:
+            b_method = 0x0f;
+            break;
+        default:
+            b_method = 0xFF;
+            break;
     }
-    if(r->method == NGX_HTTP_GET){
-        b_method = 0x01;
-    }
-    if(r->method == NGX_HTTP_POST){
-        b_method = 0x02;
-    }
-    if(r->method == NGX_HTTP_PUT){
-        b_method = 0x03;
-    }
-    if(r->method == NGX_HTTP_DELETE){
-        b_method = 0x04;
-    }
-    /* 0x05 - CONNECT */
-    if(r->method == NGX_HTTP_OPTIONS){
-        b_method = 0x06;
-    }
-    if(r->method == NGX_HTTP_TRACE){
-        b_method = 0x07;
-    }
-    if(r->method == NGX_HTTP_PATCH){
-        b_method = 0x08;
-    }
-    if(r->method == NGX_HTTP_MKCOL){
-        b_method = 0x09;
-    }
-    if(r->method == NGX_HTTP_COPY){
-        b_method = 0x0a;
-    }
-    if(r->method == NGX_HTTP_MOVE){
-        b_method = 0x0b;
-    }
-    if(r->method == NGX_HTTP_PROPFIND){
-        b_method = 0x0c;
-    }
-    if(r->method == NGX_HTTP_PROPPATCH){
-        b_method = 0x0d;
-    }
-    if(r->method == NGX_HTTP_LOCK){
-        b_method = 0x0e;
-    }
-    if(r->method == NGX_HTTP_UNLOCK){
-        b_method = 0x0f;
-    }
-
+    
     container_add_tag_Byte(event->payload, 6, "method", b_method);
 
     /* /NginxEvent/proto */
