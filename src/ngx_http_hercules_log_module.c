@@ -208,7 +208,7 @@ static ngx_int_t ngx_http_hercules_handler(ngx_http_request_t *r){
         //ngx_pfree(r->pool, s_value_content_type);
     }
     /* /NginxEvent/res_headers/<content_length> */
-    if(r->headers_out.content_length->value != NULL && r->headers_out.content_length->value.data != NULL){
+    if(r->headers_out.content_length->value.data != NULL){
         List* container_content_length = vector_add_Container(vector_res_headers);
         container_add_tag_String(container_content_length, 1, "k", "content-length");
         STR_FROM_NGX_STR(s_value_content_length, r->pool, r->headers_out.content_length->value);
