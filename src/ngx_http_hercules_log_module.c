@@ -200,17 +200,21 @@ static ngx_int_t ngx_http_hercules_handler(ngx_http_request_t *r){
     /* /NginxEvent/res_headers */
     Vector* vector_res_headers = (Vector*) container_add_tag_Vector(event->payload, CONTAINER, 11, "res_headers")->value;
     /* /NginxEvent/res_headers/<content-type> */
-    List* container_content_type = vector_add_Container(vector_res_headers);
-    container_add_tag_String(container_content_type, 1, "k", "content-type");
-    STR_FROM_NGX_STR(s_value_content_type, r->pool, r->headers_out.content_type);
-    container_add_tag_String(container_content_type, 1, "v", s_value_content_type);
-    //ngx_pfree(r->pool, s_value_content_type);
+    if(r->headers_out.content_type.data != NULL){
+        List* container_content_type = vector_add_Container(vector_res_headers);
+        container_add_tag_String(container_content_type, 1, "k", "content-type");
+        STR_FROM_NGX_STR(s_value_content_type, r->pool, r->headers_out.content_type);
+        container_add_tag_String(container_content_type, 1, "v", s_value_content_type);
+        //ngx_pfree(r->pool, s_value_content_type);
+    }
     /* /NginxEvent/res_headers/<content_length> */
-    List* container_content_length = vector_add_Container(vector_res_headers);
-    container_add_tag_String(container_content_length, 1, "k", "content-length");
-    STR_FROM_NGX_STR(s_value_content_length, r->pool, r->headers_out.content_length->value);
-    container_add_tag_String(container_content_length, 1, "v", s_value_content_length);
-    //ngx_pfree(r->pool, s_value_content_length);
+    if(r->headers_out.content_length->value != NULL && r->headers_out.content_length->value.data != NULL){
+        List* container_content_length = vector_add_Container(vector_res_headers);
+        container_add_tag_String(container_content_length, 1, "k", "content-length");
+        STR_FROM_NGX_STR(s_value_content_length, r->pool, r->headers_out.content_length->value);
+        container_add_tag_String(container_content_length, 1, "v", s_value_content_length);
+        //ngx_pfree(r->pool, s_value_content_length);
+    }
     /* /NginxEvent/res_headers/<other> */
 
     ngx_list_part_t* res_headers_part = &r->headers_out.headers.part;
