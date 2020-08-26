@@ -273,23 +273,25 @@ static ngx_int_t ngx_http_hercules_handler(ngx_http_request_t *r){
     /* /NginxEvent/counters/upstream_res_time */
     Vector* vector_upstream_res_time = (Vector*) container_add_tag_Vector(container_counters, LONG, 17, "upstream_res_time")->value;
     
-    ngx_http_upstream_state_t* upstream_state = r->upstream_states->elts;
-    for (size_t i = 0; ; ++i){
-        if(i == (size_t) r->upstream_states->nelts){
-            break;
+    if(r->upstream_states != NULL){
+        ngx_http_upstream_state_t* upstream_state = r->upstream_states->elts;
+        for (size_t i = 0; ; ++i){
+            if(i == (size_t) r->upstream_states->nelts){
+                break;
+            }
+            vector_add_Short(vector_upstream_status, (int16_t) upstream_state[i].status);
+            char* string_upstream_addr = ngx_palloc(r->pool, (sizeof(char) * upstream_state[i].peer->len) + 1);
+            string_upstream_addr[upstream_state[i].peer->len] = '\0';
+            ngx_memcpy(string_upstream_addr, upstream_state[i].peer->data, upstream_state[i].peer->len);
+            vector_add_String(vector_upstream_addr, string_upstream_addr);
+            vector_add_Long(vector_upstream_connect_time, (int64_t) upstream_state[i].connect_time);
+            vector_add_Long(vector_upstream_req_bytes, (int64_t) upstream_state[i].bytes_sent);
+            vector_add_Long(vector_upstream_res_bytes, (int64_t) upstream_state[i].bytes_received);
+            vector_add_Long(vector_upstream_res_header_time, (int64_t) upstream_state[i].header_time);
+            vector_add_Long(vector_upstream_res_len, (int64_t) upstream_state[i].response_length);
+            vector_add_Long(vector_upstream_res_time, (int64_t) upstream_state[i].response_time);
+            //ngx_pfree(r->pool, string_upstream_addr);
         }
-        vector_add_Short(vector_upstream_status, (int16_t) upstream_state[i].status);
-        char* string_upstream_addr = ngx_palloc(r->pool, (sizeof(char) * upstream_state[i].peer->len) + 1);
-        string_upstream_addr[upstream_state[i].peer->len] = '\0';
-        ngx_memcpy(string_upstream_addr, upstream_state[i].peer->data, upstream_state[i].peer->len);
-        vector_add_String(vector_upstream_addr, string_upstream_addr);
-        vector_add_Long(vector_upstream_connect_time, (int64_t) upstream_state[i].connect_time);
-        vector_add_Long(vector_upstream_req_bytes, (int64_t) upstream_state[i].bytes_sent);
-        vector_add_Long(vector_upstream_res_bytes, (int64_t) upstream_state[i].bytes_received);
-        vector_add_Long(vector_upstream_res_header_time, (int64_t) upstream_state[i].header_time);
-        vector_add_Long(vector_upstream_res_len, (int64_t) upstream_state[i].response_length);
-        vector_add_Long(vector_upstream_res_time, (int64_t) upstream_state[i].response_time);
-        //ngx_pfree(r->pool, string_upstream_addr);
     }
     
     /* /NginxEvent/counters/res_bytes */
