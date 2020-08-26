@@ -1,0 +1,30 @@
+
+name: build-only
+
+on: [push]
+
+env:
+  version: 1.19.2
+
+
+jobs:
+
+  gcc:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: submodules     
+      run: |
+        git submodule update --init --recursive
+    - name: download
+      run: |
+        wget http://nginx.org/download/nginx-${version}.tar.gz
+        tar xf nginx-${version}.tar.gz
+    - name: build
+      run: |
+        cd nginx-${version}
+        ./configure --add-module=../src
+        make
+
