@@ -25,6 +25,6 @@ jobs:
     - name: build
       run: |
         cd nginx-${version}
-        ./configure --add-module=../src
+        ./configure --with-threads --add-module=../src
         make
 
