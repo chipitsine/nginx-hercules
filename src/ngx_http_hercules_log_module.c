@@ -403,7 +403,7 @@ static ngx_int_t ngx_http_hercules_handler(ngx_http_request_t *r){
     ngx_pfree(r->pool, event_binary_size);
     ngx_free(event_binary);
 
-    mcf->event->log = r->connection->log;
+    mcf->event->log = ngx_cycle->log;
     if(!mcf->event->timer_set){
         ngx_event_add_timer(mcf->event, mcf->flush);
     }
