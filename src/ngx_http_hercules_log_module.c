@@ -47,8 +47,12 @@ static ngx_int_t ngx_http_hercules_handler(ngx_http_request_t *r){
     container_add_tag_Long(event->payload, 4, "time", timestamp);
 
     /* /NginxEvent/host = String */
-    STR_FROM_NGX_STR(s_host, r->pool, r->headers_in.host->value);
-    container_add_tag_String(event->payload, 4, "host", s_host);
+    if(r->headers_in.host != NULL){
+        STR_FROM_NGX_STR(s_host, r->pool, r->headers_in.host->value);
+        container_add_tag_String(event->payload, 4, "host", s_host);
+    } else {
+        container_add_tag_String(event->payload, 4, "host", "");
+    }
     //ngx_pfree(r->pool, s_host);
 
     /* /NginxEvent/uri = String */
