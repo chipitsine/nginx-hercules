@@ -22,9 +22,18 @@ jobs:
       run: |
         wget http://nginx.org/download/nginx-${version}.tar.gz
         tar xf nginx-${version}.tar.gz
+    - name: install prerequisites
+      run: |
+        sudo apt-get update -y
+        sudo apt install -y libtest-harness-perl
     - name: build
       run: |
         cd nginx-${version}
-        ./configure --with-threads --add-module=../src
+        ./configure --with-threads --add-module=../src --with-debug
         make
+        export TEST_NGINX_BINARY=`pwd`/objs/nginx
+        export TEST_NGINX_GLOBALS='thread_pool hercules threads=1 max_queue=65536;'
+        export TEST_NGINX_GLOBALS_HTTP='error_log /tmp/e.log; map $remote_addr $node_name { default gha; } map $remote_addr $hercules_stream  { default gha; }'
+        git clone https://github.com/nginx/nginx-tests      
+        prove -r nginx-tests
 
